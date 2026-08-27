@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Detect Emotion{% endblock %}
+{% block content %}
+<h1>Emotion Detection</h1>
+<!-- TODO E5-T2: render EmotionForm -->
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Analyze</button>
+</form>
+
+{% if result %}
+<!-- TODO E5-T5: color-coded confidence bars per emotion (CLAUDE.md:205) -->
+<h2>Predicted: {{ result.predicted }} ({{ result.confidence|floatformat:2 }})</h2>
+<ul>
+{% for emotion, score in result.scores %}
+    <li>{{ emotion }}: {{ score|floatformat:2 }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}
