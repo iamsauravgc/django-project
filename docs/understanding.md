@@ -137,7 +137,7 @@ Computed on single-label rows (multi-label cells excluded from length stats).
 From the project root:
 
 ```bash
-python -m ml.eda
+python ml/eda.py
 ```
 
 This prints the full inspection report for all three splits and writes the
@@ -148,9 +148,144 @@ three PNG figures into `ml/eda_artifacts/`.
 ## 6. Epic 1 → Epic 2 handoff
 
 - The collapse mapping (`NUMERIC_TO_CORE`) is finalized and reusable.
-- `collapse_labels()` returns the core emotions for a label cell; Epic 2 will
-  use it in `load_tsv` and **drop** multi-label rows (`is_single_label`).
+- `collapse_labels()` returns the core emotions for a label cell; the
+  preprocessing stage uses it in `load_tsv` and **drops** multi-label rows
+  (`is_single_label`).
 - Class imbalance confirms the need for `class_weight="balanced"` and macro-F1
-  evaluation (E2-T4, E3-T2/T3).
-- Next: Epic 2 — text cleaning (`clean_text`), `load_tsv` with collapse +
-  multi-label drop, and TF-IDF vectorization fit on train only.
+  evaluation.
+
+---
+
+## Preprocessing & feature engineering
+
+Implemented in `ml/preprocess.py`. The earlier collapse mapping is reused; the
+new work is text cleaning, dataset loading and TF-IDF vectorization.
+
+### Text cleaning (`clean_text`)
+Each raw comment is: lowercased; stripped of URLs (`http(s)://…`,
+`www.…`) and GoEmotions `[NAME]` placeholders; reduced to letters, numbers and
+spaces (punctuation and other special characters removed); whitespace-collapsed;
+and filtered to drop English stopwords (NLTK `stopwords`, downloaded on first
+use if missing). Rows that become empty after cleaning are discarded.
+
+### Dataset loading (`load_tsv`)
+Reads a TSV (`text \t label \t id`), **drops multi-label rows** (a label cell
+containing a comma), collapses the remaining single numeric id to its core
+emotion via `NUMERIC_TO_CORE`, applies `clean_text`, and returns a DataFrame
+with `text` (cleaned) and `label` (core emotion).
+
+### Multi-label handling
+Multi-label rows are dropped rather than kept. This was chosen earlier because
+GoEmotions still has tens of thousands of single-label rows afterwards, and
+dropping avoids ambiguous training targets. After dropping, the training split
+has 36,206 usable rows (down from 43,410 raw).
+
+### Train / validation / test splits
+The data ships pre-split by Google (train / dev / test, already disjoint), so
+no re-split is performed — the provided splits are used as-is. This inherently
+prevents leakage: the vectorizer is fit only on train and then applied to dev
+and test.
+
+### Class imbalance (`class_weights`)
+The minority classes (fear, disgust) are far smaller than joy/neutral, so
+`class_weights(labels)` returns a `class_weight="balanced"` dictionary
+(sklearn `compute_class_weight`) for the classifier to consume at training
+time. Evaluation uses macro-F1, not accuracy.
+
+### TF-IDF vectorization (`get_vectorizer`, `prepare_data`)
+A `TfidfVectorizer(max_features=10000, ngram_range=(1, 2), min_df=2,
+sublinear_tf=True)` is **fit on the training texts only**, then used to
+transform dev and test. `prepare_data()` runs the full pipeline and writes the
+fitted vectorizer to `ml/model/vectorizer.pkl` for later training and for the
+Django runtime.
+
+Resulting matrix sizes after cleaning:
+
+| Split | Rows | Features |
+|---|---:|---:|
+| Train | 36,206 | 10,000 |
+| Dev | 4,535 | 10,000 |
+| Test | 4,581 | 10,000 |
+
+### How to run
+```bash
+python ml/preprocess.py
+```
+Prints the per-split row counts and saves `ml/model/vectorizer.pkl`.
+
+---
+
+## Training & evaluation
+
+Implemented in `ml/train.py` (training) and `ml/evaluate.py` (dev metrics +
+error analysis). The vectorizer from the preprocessing stage is reused, so
+there is no leakage: features are fit on train only.
+
+### Models compared
+A most-frequent baseline establishes the floor, then LinearSVC (the chosen
+model per the project decision) and SGDClassifier are compared on the dev set
+with macro-F1.
+
+| Model | Dev macro-F1 |
+|---|---:|
+| Baseline (most_frequent) | 0.0768 |
+| LinearSVC (class_weight="balanced") | 0.4776 |
+| SGDClassifier (log_loss, balanced) | 0.5177 |
+
+### Hyperparameter tuning
+`GridSearchCV` over `C ∈ [0.1, 1, 10]` (3-fold, `f1_macro`) selected
+**C = 0.1** (cv macro-F1 0.4907). The tuned LinearSVC is saved as
+`ml/model/model.pkl`. It is kept as the production model even though SGD scored
+slightly higher on dev, per the project's model decision.
+
+### Final test evaluation
+Scored once, on the held-out test set:
+
+| Emotion | Precision | Recall | F1 |
+|---|---:|---:|---:|
+| joy | 0.8127 | 0.7016 | 0.7531 |
+| anger | 0.4645 | 0.3776 | 0.4166 |
+| fear | 0.4000 | 0.7792 | 0.5286 |
+| sadness | 0.4788 | 0.5676 | 0.5194 |
+| surprise | 0.3844 | 0.3415 | 0.3617 |
+| disgust | 0.3379 | 0.6447 | 0.4434 |
+| neutral | 0.6019 | 0.6681 | 0.6333 |
+| **macro avg** | 0.4972 | 0.5829 | **0.5223** |
+
+Test macro-F1 is **0.5223**, above the most-frequent baseline (~0.08) but
+**below the 0.60 success target**. Anger, surprise and disgust are the weak
+classes.
+
+### Error analysis
+`confusion_matrix` on the dev set is saved to `ml/eda_artifacts/confusion.png`.
+The dominant confusions are all with **neutral** — the model leans on the
+majority class for the harder emotions:
+
+| Actual → Predicted | Count |
+|---|---:|
+| joy → neutral | 280 |
+| surprise → neutral | 192 |
+| anger → neutral | 163 |
+| neutral → joy | 162 |
+| neutral → surprise | 153 |
+| neutral → anger | 137 |
+| neutral → sadness | 76 |
+| joy → surprise | 65 |
+
+### Confidence scores
+LinearSVC has no `predict_proba`; per-class confidence is obtained at inference
+by applying a softmax to `decision_function` (wired in the prediction stage).
+
+### How to run
+```bash
+python ml/train.py
+python ml/evaluate.py
+```
+`train.py` prints the baseline/SVC/SGD comparison, tunes C, saves `model.pkl`,
+and reports the final test macro-F1. `evaluate.py` prints the dev report and
+the most-confused pairs, and writes `confusion.png`.
+
+### Notes for improvement
+To reach the 0.60 target: add character n-grams, revisit stopword removal, try
+class-probability calibration (`CalibratedClassifierCV`), or enrich the collapse
+mapping for the smallest classes (fear, disgust).

@@ -1,48 +1,101 @@
 """
-Epic 1 + Epic 3 — Training boilerplate
-Usage: python ml/train.py --dry-run
+Training and evaluation for the emotion detector.
+
+Runs a most-frequent baseline, trains LinearSVC and SGDClassifier, tunes the
+SVC's C parameter, saves the tuned SVC, and reports the final test macro-F1.
 """
-import argparse
+import sys
 from pathlib import Path
 
-# TODO: from preprocess import load_tsv, get_vectorizer, CORE_EMOTIONS
-
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT / "ml" / "data"
-TRAIN = DATA_DIR / "train.tsv"
-DEV = DATA_DIR / "dev.tsv"
-TEST = DATA_DIR / "test.tsv"
-MODEL_DIR = ROOT / "ml" / "model"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-def load_splits():
-    """TODO E1-T2: load train/dev/test, print shape, label dist, nulls/dups"""
-    pass
+import pickle
 
-def train_baseline():
-    """TODO E3-T1: DummyClassifier(strategy='stratified') -> F1 macro"""
-    pass
+from sklearn.dummy import DummyClassifier
+from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import classification_report, f1_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.svm import LinearSVC
 
-def train_svc():
-    """TODO E3-T2: LinearSVC(class_weight='balanced') + SGDClassifier compare"""
-    pass
+from ml.preprocess import CORE_EMOTIONS, MODEL_DIR, prepare_data
 
-def tune_hyperparams():
-    """TODO E3-T5: GridSearchCV on C param, cv=3, scoring='f1_macro'"""
-    pass
+LABELS = CORE_EMOTIONS
 
-def save_artifacts():
-    """TODO E3-T8: pickle.dump(model, open('ml/model/model.pkl','wb')) + vectorizer.pkl"""
-    pass
 
-def main(args):
-    print("[boilerplate] ml/train.py — implement EDA -> train -> eval per CLAUDE.md Epic 3")
-    if args.dry_run:
-        print(f"[stub] Would load {TRAIN} ({TRAIN.exists()}) + vectorize train-only (no leakage)")
-        return
-    # TODO: call load_splits() -> get_vectorizer().fit_transform(train) -> train_baseline() -> train_svc()
+def macro_f1(model, X, y) -> float:
+    return f1_score(y, model.predict(X), average="macro", labels=LABELS)
+
+
+def baseline(data):
+    model = DummyClassifier(strategy="most_frequent")
+    model.fit(data["X_train"], data["y_train"])
+    score = macro_f1(model, data["X_dev"], data["y_dev"])
+    print(f"Baseline (most_frequent) - dev macro-F1: {score:.4f}")
+    return model
+
+
+def train_svc(data):
+    model = LinearSVC(class_weight="balanced", random_state=42)
+    model.fit(data["X_train"], data["y_train"])
+    score = macro_f1(model, data["X_dev"], data["y_dev"])
+    print(f"LinearSVC              - dev macro-F1: {score:.4f}")
+    return model
+
+
+def train_sgd(data):
+    model = SGDClassifier(
+        loss="log_loss", class_weight="balanced", random_state=42, max_iter=1000, tol=1e-3
+    )
+    model.fit(data["X_train"], data["y_train"])
+    score = macro_f1(model, data["X_dev"], data["y_dev"])
+    print(f"SGDClassifier          - dev macro-F1: {score:.4f}")
+    return model
+
+
+def tune(data) -> LinearSVC:
+    grid = GridSearchCV(
+        LinearSVC(class_weight="balanced", random_state=42),
+        {"C": [0.1, 1, 10]},
+        cv=3,
+        scoring="f1_macro",
+        n_jobs=-1,
+    )
+    grid.fit(data["X_train"], data["y_train"])
+    print(f"Tuned LinearSVC - best C={grid.best_params_['C']} (cv macro-F1 {grid.best_score_:.4f})")
+    return grid.best_estimator_
+
+
+def final_eval(model, data):
+    y_true = data["y_test"]
+    y_pred = model.predict(data["X_test"])
+    print("\nFinal test evaluation")
+    print(classification_report(y_true, y_pred, labels=LABELS, digits=4))
+    print(f"Test macro-F1: {f1_score(y_true, y_pred, average='macro', labels=LABELS):.4f}")
+
+
+def save_artifacts(model):
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    with open(MODEL_DIR / "model.pkl", "wb") as f:
+        pickle.dump(model, f)
+    print(f"Model saved to {MODEL_DIR / 'model.pkl'}")
+
+
+def main():
+    data = prepare_data()
+
+    baseline(data)
+    svc = train_svc(data)
+    train_sgd(data)
+
+    model = tune(data)
+    save_artifacts(model)
+
+    # keep the untuned SVC result available for reference
+    _ = svc
+    final_eval(model, data)
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true", help="stub: load + stats only")
-    args = parser.parse_args()
-    main(args)
+    main()

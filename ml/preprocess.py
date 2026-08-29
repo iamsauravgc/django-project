@@ -1,15 +1,22 @@
 """
-Shared preprocessing helpers for the emotion detector.
+Shared preprocessing and feature engineering for the emotion detector.
 
-Defines the GoEmotions 27 -> 7 emotion collapse mapping so the EDA script and
-the training pipeline use one consistent source of truth. Text cleaning,
-vectorization and dataset loading are implemented later in the training stage.
+Defines the GoEmotions 27 -> 7 emotion collapse mapping and the text cleaning,
+dataset loading and TF-IDF vectorization used before training.
 """
 import re
-import string
+from pathlib import Path
 
-# Core emotions used across the app. "neutral" is kept as a 7th class because
-# it is the single most frequent label in GoEmotions.
+import nltk
+import pandas as pd
+from nltk.corpus import stopwords
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.utils.class_weight import compute_class_weight
+
+ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT / "ml" / "data"
+MODEL_DIR = ROOT / "ml" / "model"
+
 CORE_EMOTIONS = ["joy", "anger", "fear", "sadness", "surprise", "disgust", "neutral"]
 
 EMOTION_COLORS = {
@@ -22,80 +29,47 @@ EMOTION_COLORS = {
     "neutral": "#C0C0C0",
 }
 
-# GoEmotions 28 label names, indexed by their numeric id (0-27).
 GOEMOTIONS_LABELS = [
-    "admiration",      # 0
-    "amusement",       # 1
-    "anger",           # 2
-    "annoyance",       # 3
-    "approval",        # 4
-    "caring",          # 5
-    "confusion",       # 6
-    "curiosity",       # 7
-    "desire",          # 8
-    "disappointment",  # 9
-    "disapproval",     # 10
-    "disgust",         # 11
-    "embarrassment",   # 12
-    "excitement",      # 13
-    "fear",            # 14
-    "gratitude",       # 15
-    "grief",           # 16
-    "joy",             # 17
-    "love",            # 18
-    "nervousness",     # 19
-    "optimism",        # 20
-    "pride",           # 21
-    "realization",     # 22
-    "relief",          # 23
-    "remorse",         # 24
-    "sadness",         # 25
-    "surprise",        # 26
-    "neutral",         # 27
+    "admiration", "amusement", "anger", "annoyance", "approval", "caring",
+    "confusion", "curiosity", "desire", "disappointment", "disapproval",
+    "disgust", "embarrassment", "excitement", "fear", "gratitude", "grief",
+    "joy", "love", "nervousness", "optimism", "pride", "realization", "relief",
+    "remorse", "sadness", "surprise", "neutral",
 ]
 
-# Numeric GoEmotions id -> core emotion (27 -> 7 collapse).
-# Labels not in the original reference table (admiration=0, approval=4,
-# caring=5, desire=8) map to "joy" as the closest positive emotion. Every
-# core class ends up with more than 500 rows, so no further merging is needed.
 NUMERIC_TO_CORE = {
-    0: "joy",       # admiration
-    1: "joy",       # amusement
-    2: "anger",     # anger
-    3: "anger",     # annoyance
-    4: "joy",       # approval
-    5: "joy",       # caring
-    6: "surprise",  # confusion
-    7: "surprise",  # curiosity
-    8: "joy",       # desire
-    9: "sadness",   # disappointment
-    10: "anger",    # disapproval
-    11: "disgust",  # disgust
-    12: "sadness",  # embarrassment
-    13: "joy",      # excitement
-    14: "fear",     # fear
-    15: "joy",      # gratitude
-    16: "sadness",  # grief
-    17: "joy",      # joy
-    18: "joy",      # love
-    19: "fear",     # nervousness
-    20: "joy",      # optimism
-    21: "joy",      # pride
-    22: "surprise", # realization
-    23: "joy",      # relief
-    24: "sadness",  # remorse
-    25: "sadness",  # sadness
-    26: "surprise", # surprise
-    27: "neutral",  # neutral
+    0: "joy", 1: "joy", 2: "anger", 3: "anger", 4: "joy", 5: "joy",
+    6: "surprise", 7: "surprise", 8: "joy", 9: "sadness", 10: "anger",
+    11: "disgust", 12: "sadness", 13: "joy", 14: "fear", 15: "joy",
+    16: "sadness", 17: "joy", 18: "joy", 19: "fear", 20: "joy", 21: "joy",
+    22: "surprise", 23: "joy", 24: "sadness", 25: "sadness", 26: "surprise",
+    27: "neutral",
 }
+
+try:
+    STOPWORDS = set(stopwords.words("english"))
+except LookupError:
+    nltk.download("stopwords")
+    STOPWORDS = set(stopwords.words("english"))
+
+_URL_RE = re.compile(r"https?://\S+|www\.\S+")
+_NAME_RE = re.compile(r"\[NAME\]")
+_SPECIAL_RE = re.compile(r"[^a-z0-9\s]")
+_WS_RE = re.compile(r"\s+")
+
+
+def clean_text(text: str) -> str:
+    """Lowercase, strip URLs/[NAME], drop punctuation, remove stopwords."""
+    text = text.lower()
+    text = _URL_RE.sub(" ", text)
+    text = _NAME_RE.sub(" ", text)
+    text = _SPECIAL_RE.sub(" ", text)
+    text = _WS_RE.sub(" ", text).strip()
+    return " ".join(w for w in text.split() if w not in STOPWORDS)
 
 
 def collapse_labels(label_str: str) -> list[str]:
-    """Map a GoEmotions label cell (e.g. "2" or "0,1") to core emotion(s).
-
-    Returns the distinct core emotions, de-duplicated. A multi-label cell
-    such as "0,1" collapses to ["joy"].
-    """
+    """Map a label cell (e.g. "2" or "0,1") to its distinct core emotions."""
     seen = set()
     core = []
     for part in str(label_str).split(","):
@@ -110,20 +84,69 @@ def collapse_labels(label_str: str) -> list[str]:
 
 
 def is_single_label(label_str: str) -> bool:
-    """True when the label cell contains exactly one emotion id."""
     return "," not in str(label_str)
 
 
-# --- Implemented in the training stage ---
+def load_tsv(path) -> pd.DataFrame:
+    """Read a GoEmotions TSV, drop multi-label rows, collapse and clean."""
+    df = pd.read_csv(
+        path,
+        sep="\t",
+        header=None,
+        names=["text", "label", "id"],
+        dtype=str,
+        keep_default_na=False,
+    )
+    df = df[df["label"].apply(is_single_label)].copy()
+    df["label"] = df["label"].apply(lambda s: NUMERIC_TO_CORE[int(s)])
+    df["text"] = df["text"].apply(clean_text)
+    df = df[df["text"].str.len() > 0]
+    return df.reset_index(drop=True)
 
-def clean_text(text: str) -> str:
-    """TODO: lowercase, strip URLs, [NAME], punctuation and stopwords."""
-    return text  # placeholder
 
-def load_tsv(path: str):
-    """TODO: read the TSV, collapse 27 labels into 7, drop multi-label rows."""
-    pass
+def get_vectorizer() -> TfidfVectorizer:
+    """Unfitted TF-IDF vectorizer; fit on train only to avoid leakage."""
+    return TfidfVectorizer(max_features=10000, ngram_range=(1, 2), min_df=2, sublinear_tf=True)
 
-def get_vectorizer():
-    """TODO: return a TfidfVectorizer(max_features=10000, ngram_range=(1, 2))."""
-    pass
+
+def class_weights(labels) -> dict:
+    """Balanced class weights for the given label list."""
+    classes = sorted(set(labels))
+    weights = compute_class_weight("balanced", classes=classes, y=labels)
+    return dict(zip(classes, weights))
+
+
+def prepare_data():
+    """Load splits, fit the vectorizer on train, transform all, save vectorizer.pkl."""
+    import pickle
+
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+    train = load_tsv(DATA_DIR / "train.tsv")
+    dev = load_tsv(DATA_DIR / "dev.tsv")
+    test = load_tsv(DATA_DIR / "test.tsv")
+
+    vectorizer = get_vectorizer()
+    X_train = vectorizer.fit_transform(train["text"])
+    X_dev = vectorizer.transform(dev["text"])
+    X_test = vectorizer.transform(test["text"])
+
+    with open(MODEL_DIR / "vectorizer.pkl", "wb") as f:
+        pickle.dump(vectorizer, f)
+
+    return {
+        "X_train": X_train, "X_dev": X_dev, "X_test": X_test,
+        "y_train": train["label"], "y_dev": dev["label"], "y_test": test["label"],
+    }
+
+
+def main():
+    data = prepare_data()
+    print(f"Train: {data['X_train'].shape[0]:,} rows, {data['X_train'].shape[1]:,} features")
+    print(f"Dev:   {data['X_dev'].shape[0]:,} rows")
+    print(f"Test:  {data['X_test'].shape[0]:,} rows")
+    print(f"Vectorizer saved to {MODEL_DIR / 'vectorizer.pkl'}")
+
+
+if __name__ == "__main__":
+    main()

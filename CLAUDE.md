@@ -1,10 +1,5 @@
 # CLAUDE.md — Emotion Detection Web App
 
-> Project reference for AI coding tools (Claude Code, Cursor, Bolt).
-> Read this before touching any code.
-
----
-
 ## Problem Statement
 
 - People can't objectively understand the emotional tone of their own writing
