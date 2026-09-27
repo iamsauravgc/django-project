@@ -78,11 +78,8 @@ LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
 
 # ML artifacts — loaded in predictor/utils.py (E5-T1)
-# Support both flat layout (../../ml/model) and nested
-import os
 MODEL_DIR = BASE_DIR.parent / "ml" / "model"
-if not MODEL_DIR.exists():
+if not MODEL_DIR.exists():  # fallback if the app is ever run from inside django_app/
     MODEL_DIR = BASE_DIR / "ml" / "model"
 MODEL_PATH = MODEL_DIR / "model.pkl"
 VECTORIZER_PATH = MODEL_DIR / "vectorizer.pkl"
-LABEL_MAPS_PATH = MODEL_DIR / "label_maps.pkl"

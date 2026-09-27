@@ -1,21 +1,73 @@
 """
-Epic 4 + 5 — Views boilerplate
+Prediction flow — analyze text, store it, replay the user's history.
 """
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.db.models import Count
 from django.shortcuts import render
-# TODO: from django.contrib.auth.decorators import login_required
-# TODO: from .forms import EmotionForm; from .models import Prediction; from .utils import predict_emotion
 
-# TODO: @login_required
+from .forms import EmotionForm
+from .models import EMOTION_COLORS, EMOTION_LABELS, Prediction
+from .utils import ArtifactMissing, predict_emotion
+
+
+@login_required
 def predict_view(request):
-    """TODO E5-T2..T6:
-    - GET: render form
-    - POST: form.is_valid() -> predict_emotion(text) -> Prediction.objects.create(user=request.user, ...)
-    - sort scores, render result.html with color bars per CLAUDE.md:205
-    """
-    # stub: just render form
-    return render(request, "predictor/predict.html", {})
+    """Analyze text on GET/POST and persist every successful run."""
+    result = None
 
-# TODO: @login_required
+    if request.method == "POST":
+        form = EmotionForm(request.POST)
+        if form.is_valid():
+            text = form.cleaned_data["text"]
+            try:
+                result = predict_emotion(text)
+            except ArtifactMissing as exc:
+                messages.error(request, str(exc))
+            else:
+                Prediction.objects.create(
+                    user=request.user,
+                    text=text,
+                    predicted_emotion=result["predicted"],
+                    confidence=result["confidence"],
+                    all_scores=result["scores"],
+                )
+    else:
+        form = EmotionForm()
+
+    return render(
+        request,
+        "predictor/predict.html",
+        {"form": form, "result": result},
+    )
+
+
+@login_required
 def history_view(request):
-    """TODO E5-T7: Prediction.objects.filter(user=request.user) — isolated per user"""
-    return render(request, "predictor/history.html", {})
+    """The signed-in user's own predictions — never anyone else's."""
+    predictions = Prediction.objects.filter(user=request.user)
+    counts = (
+        Prediction.objects.filter(user=request.user)
+        .values("predicted_emotion")
+        .annotate(n=Count("id"))
+        .order_by("-n")
+    )
+    summary = [
+        {
+            "emotion": row["predicted_emotion"],
+            "label": EMOTION_LABELS[row["predicted_emotion"]],
+            "color": EMOTION_COLORS[row["predicted_emotion"]],
+            "n": row["n"],
+        }
+        for row in counts
+    ]
+
+    return render(
+        request,
+        "predictor/history.html",
+        {
+            "predictions": predictions,
+            "summary": summary,
+            "total": sum(row["n"] for row in summary),
+        },
+    )

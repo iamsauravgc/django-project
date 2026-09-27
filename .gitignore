@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual env / tooling
+.venv/
+venv/
+.env
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Django runtime noise (db.sqlite3 is intentionally tracked — it ships demo data)
+*.log
+staticfiles/

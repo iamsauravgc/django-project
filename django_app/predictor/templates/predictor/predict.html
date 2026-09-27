@@ -1,21 +1,45 @@
 {% extends "base.html" %}
 {% block title %}Detect Emotion{% endblock %}
 {% block content %}
-<h1>Emotion Detection</h1>
-<!-- TODO E5-T2: render EmotionForm -->
-<form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Analyze</button>
-</form>
+<section class="panel">
+    <h1>Emotion Detection</h1>
+    <p class="lede">
+        Paste anything you wrote or received — a journal entry, a review, a message.
+        The model picks the dominant emotion out of seven and scores every class.
+    </p>
+
+    <form method="post" class="predict-form">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Analyze</button>
+    </form>
+</section>
 
 {% if result %}
-<!-- TODO E5-T5: color-coded confidence bars per emotion (CLAUDE.md:205) -->
-<h2>Predicted: {{ result.predicted }} ({{ result.confidence|floatformat:2 }})</h2>
-<ul>
-{% for emotion, score in result.scores %}
-    <li>{{ emotion }}: {{ score|floatformat:2 }}</li>
-{% endfor %}
-</ul>
+<section class="panel result" aria-live="polite">
+    <div class="result-head">
+        <span class="dot dot-lg" style="background: {{ result.predicted_color }}"></span>
+        <div>
+            <p class="verdict-label">Predicted emotion</p>
+            <p class="verdict-emotion">{{ result.predicted|capfirst }}</p>
+        </div>
+        <p class="verdict-conf" style="--dot: {{ result.predicted_color }}">
+            {{ result.confidence_pct }}<span>confidence</span>
+        </p>
+    </div>
+
+    <div class="scores">
+        {% for row in result.score_list %}
+            {% widthratio row.score 1 100 as pct %}
+            <div class="bar-row {% if forloop.first %}is-top{% endif %}">
+                <span class="bar-label">{{ row.emotion|capfirst }}</span>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width: {{ pct }}%; background: {{ row.color }}"></div>
+                </div>
+                <span class="bar-value">{{ pct|floatformat:1 }}%</span>
+            </div>
+        {% endfor %}
+    </div>
+</section>
 {% endif %}
 {% endblock %}
