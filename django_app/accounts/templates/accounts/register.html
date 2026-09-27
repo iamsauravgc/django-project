@@ -1,13 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Register{% endblock %}
 {% block content %}
-<h1>Register</h1>
+<section class="sec auth">
+    <header class="sec-head">
+        <p class="sec-label">Account</p>
+        <h1>Register</h1>
+    </header>
 
-<form method="post">
-    {% csrf_token %}
-    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-    {{ form.as_p }}
-    <button type="submit" class="btn btn-primary">Register</button>
-</form>
-<p>Have an account? <a href="{% url 'login' %}">Login</a></p>
+    <form method="post" class="auth-form">
+        {% csrf_token %}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Register</button>
+    </form>
+
+    <p class="auth-alt">Have an account? <a class="link" href="{% url 'login' %}">Login</a></p>
+</section>
 {% endblock %}

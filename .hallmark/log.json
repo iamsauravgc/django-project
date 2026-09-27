@@ -1,0 +1,12 @@
+[
+  {
+    "date": "2026-09-27",
+    "scope": "app",
+    "macrostructure": "Specimen",
+    "theme": "Newsprint",
+    "enrichment": "none",
+    "nav": "N6",
+    "footer": "Ft4",
+    "brief": "Emotion Detector Django app - editorial redesign for coursework reviewers"
+  }
+]

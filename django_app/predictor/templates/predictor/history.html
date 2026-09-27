@@ -1,26 +1,28 @@
 {% extends "base.html" %}
 {% block title %}History{% endblock %}
 {% block content %}
-<section class="panel">
-    <div class="page-head">
-        <div>
-            <h1>Your Prediction History</h1>
-            <p class="lede">
-                {% if total %}
-                    {{ total }} analysis{{ total|pluralize }}, visible only to you.
-                {% else %}
-                    Nothing here yet, analyze some text first.
-                {% endif %}
-            </p>
-        </div>
+<section class="sec">
+    <header class="sec-head">
+        <p class="sec-label">Ledger</p>
+        <h1>Your Prediction History</h1>
+        <p class="lede">
+            {% if total %}
+                {{ total }} analysis{{ total|pluralize }}, visible only to you.
+            {% else %}
+                Nothing here yet, analyze some text first.
+            {% endif %}
+        </p>
+    </header>
+
+    <div class="sec-actions">
         <a class="btn btn-primary" href="{% url 'predict' %}">New analysis</a>
     </div>
 
     {% if summary %}
     <ul class="summary">
         {% for row in summary %}
-        <li class="chip" style="--chip: {{ row.color }}">
-            <span class="dot" style="background: {{ row.color }}"></span>
+        <li class="chip" style="--chip: var(--emo-{{ row.emotion }})">
+            <span class="dot"></span>
             {{ row.label }}
             <b>{{ row.n }}</b>
         </li>
@@ -31,28 +33,32 @@
     <table class="history-table">
         <thead>
             <tr>
-                <th>Date</th>
-                <th>Text</th>
-                <th>Emotion</th>
-                <th>Confidence</th>
+                <th scope="col">Date</th>
+                <th scope="col">Text</th>
+                <th scope="col">Emotion</th>
+                <th scope="col">Confidence</th>
             </tr>
         </thead>
         <tbody>
         {% for p in predictions %}
             <tr>
-                <td class="when">{{ p.created_at|date:"d M Y, H:i" }}</td>
-                <td class="snippet" title="{{ p.text }}">{{ p.text|truncatechars:90 }}</td>
-                <td>
-                    <span class="chip" style="--chip: {{ p.color }}">
-                        <span class="dot" style="background: {{ p.color }}"></span>
+                <td class="when" data-label="Date">{{ p.created_at|date:"d M Y, H:i" }}</td>
+                <td class="snippet" data-label="Text" title="{{ p.text }}">{{ p.text|truncatechars:90 }}</td>
+                <td data-label="Emotion">
+                    <span class="chip" style="--chip: var(--emo-{{ p.predicted_emotion }})">
+                        <span class="dot"></span>
                         {{ p.get_predicted_emotion_display }}
                     </span>
                 </td>
-                <td class="conf">{{ p.confidence_pct }}</td>
+                <td class="conf" data-label="Confidence">{{ p.confidence_pct }}</td>
             </tr>
         {% empty %}
             <tr>
-                <td colspan="4" class="empty">No predictions yet.</td>
+                <td colspan="4" class="empty">
+                    <span class="empty-title">No predictions yet.</span>
+                    <span class="empty-note">Analyzed text lands here as a private ledger, visible only to your account.</span>
+                    <a class="btn btn-ghost" href="{% url 'predict' %}">Analyze text</a>
+                </td>
             </tr>
         {% endfor %}
         </tbody>

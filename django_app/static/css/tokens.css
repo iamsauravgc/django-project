@@ -1,0 +1,83 @@
+/* Hallmark - genre: editorial - macrostructure: Specimen - theme: Newsprint
+   nav: N6 masthead - footer: Ft4 colophon - design-system: DESIGN.md
+   designed-as-app - paper: light / display: roman serif / accent: warm red */
+
+:root {
+  /* Paper: warm newsprint, never pure white. Anchor hue ~85. */
+  --color-paper:        oklch(97% 0.010 85);
+  --color-paper-2:      oklch(94.5% 0.012 85);
+  --color-paper-3:      oklch(91% 0.014 84);
+  --color-rule:         oklch(84% 0.014 82);
+  --color-rule-2:       oklch(58% 0.016 80);
+  --color-neutral:      oklch(55% 0.014 80);
+  --color-muted:        oklch(44% 0.014 75);
+  --color-ink-2:        oklch(30% 0.014 75);
+  --color-ink:          oklch(17% 0.012 70);
+  --color-accent:       oklch(52% 0.170 27);
+  --color-accent-ink:   oklch(97% 0.010 85);
+  --color-focus:        oklch(52% 0.170 27);
+  --color-error:        oklch(50% 0.190 25);
+
+  /* Emotion data colours, deepened from the training palette so every
+     fill holds against light paper. Mirrors ml/preprocess.EMOTION_COLORS. */
+  --emo-joy:      oklch(64% 0.160 88);
+  --emo-anger:    oklch(58% 0.190 27);
+  --emo-fear:     oklch(55% 0.170 305);
+  --emo-sadness:  oklch(57% 0.120 245);
+  --emo-surprise: oklch(65% 0.160 55);
+  --emo-disgust:  oklch(60% 0.150 150);
+  --emo-neutral:  oklch(64% 0.010 85);
+
+  /* Three families: display, body, mono (mono in two slots only). */
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-body:    "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-outlier: "IBM Plex Mono", ui-monospace, monospace;
+
+  --display-weight: 700;
+  --tracking-display: -0.02em;
+  --tracking-label: 0.10em;
+
+  /* Major third (1.25) from a 16px body. */
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-md:   1.25rem;
+  --text-lg:   1.5625rem;
+  --text-xl:   1.9531rem;
+  --text-2xl:  2.4414rem;
+  --text-3xl:  3.0518rem;
+  --text-display: clamp(2.75rem, 5vw + 1rem, 5.25rem);
+
+  /* 4pt named scale. */
+  --space-3xs: 0.125rem;
+  --space-2xs: 0.25rem;
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1rem;
+  --space-lg:  1.5rem;
+  --space-xl:  2.5rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+  --space-4xl: 9rem;
+
+  --rule-hair: 1px;
+  --rule-fine: 2px;
+
+  --radius-card: 0;
+  --radius-input: 2px;
+  --radius-pill: 0;
+
+  /* Motion: Newsprint is 0x - static print metaphor. Tokens exist so no
+     rule ever invents a value; the theme deliberately does not animate. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:  cubic-bezier(0.7, 0, 0.84, 0);
+  --dur-micro: 0ms;
+  --dur-short: 0ms;
+
+  --page-gutter: clamp(1rem, 4vw, 3rem);
+  --page-max: 68rem;
+
+  --z-base: 1;
+  --z-raised: 10;
+  --z-sticky: 200;
+}

@@ -1,31 +1,47 @@
 {% extends "base.html" %}
 {% block title %}Detect Emotion{% endblock %}
 {% block content %}
-<section class="panel">
-    <h1>Emotion Detection</h1>
-    <p class="lede">
-        Paste anything you wrote or received: a journal entry, a review, a message.
-        The model picks the dominant emotion out of seven and scores every class.
-    </p>
+<section class="sec">
+    <header class="sec-head">
+        <p class="sec-label">01 / Input</p>
+        <h1>Your words, read closely.</h1>
+        <p class="lede">
+            Paste anything you wrote or received: a journal entry, a review, a message.
+            The model picks the dominant emotion out of seven and scores every class.
+        </p>
+    </header>
 
-    <form method="post" class="predict-form">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit" class="btn btn-primary">Analyze</button>
-    </form>
+    <div class="split">
+        <form method="post" class="predict-form">
+            {% csrf_token %}
+            <div class="field">
+                <label for="{{ form.text.id_for_label }}">{{ form.text.label }}</label>
+                {{ form.text }}
+                <div class="field-msg">{{ form.text.errors }}</div>
+            </div>
+            <button type="submit" class="btn btn-primary">Analyze</button>
+        </form>
+
+        <aside class="margin-note">
+            <p class="note-label">Model</p>
+            <p>TF-IDF over cleaned text, scored by LinearSVC. Seven classes: joy, anger, fear, sadness, surprise, disgust, neutral.</p>
+        </aside>
+    </div>
 </section>
 
 {% if result %}
-<section class="panel result" aria-live="polite">
-    <div class="result-head">
-        <span class="dot dot-lg" style="background: {{ result.predicted_color }}"></span>
-        <div>
-            <p class="verdict-label">Predicted emotion</p>
-            <p class="verdict-emotion">{{ result.predicted|capfirst }}</p>
-        </div>
-        <p class="verdict-conf" style="--dot: {{ result.predicted_color }}">
-            {{ result.confidence_pct }}<span>confidence</span>
-        </p>
+<section class="sec result" aria-live="polite">
+    <header class="sec-head">
+        <p class="sec-label">02 / Verdict</p>
+        <h2 class="verdict-label">Predicted emotion</h2>
+    </header>
+
+    <div class="verdict">
+        <span class="verdict-main">
+            <span class="swatch" style="background: var(--emo-{{ result.predicted }})"></span>
+            <span class="verdict-emotion">{{ result.predicted|capfirst }}</span>
+        </span>
+        <p class="verdict-conf">{{ result.confidence_pct }}<span>confidence</span></p>
     </div>
 
     <div class="scores">
@@ -33,8 +49,8 @@
             {% widthratio row.score 1 100 as pct %}
             <div class="bar-row {% if forloop.first %}is-top{% endif %}">
                 <span class="bar-label">{{ row.emotion|capfirst }}</span>
-                <div class="bar-track">
-                    <div class="bar-fill" style="width: {{ pct }}%; background: {{ row.color }}"></div>
+                <div class="bar-track" aria-hidden="true">
+                    <div class="bar-fill" style="width: {{ pct }}%; background: var(--emo-{{ row.emotion }})"></div>
                 </div>
                 <span class="bar-value">{{ pct|floatformat:1 }}%</span>
             </div>
