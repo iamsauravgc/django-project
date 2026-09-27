@@ -1,6 +1,5 @@
 """
-`python manage.py seed_db` — populate the database with demo accounts and a
-realistic prediction history.
+Fill the database with demo accounts and a realistic prediction history.
 
 Every seeded row is a genuine ``predict_emotion()`` call, so confidence
 scores and the seven-way breakdown are exactly what the live app would
@@ -25,8 +24,8 @@ DEMO_ACCOUNTS = [
     ("ravi", "Demo@12345", False),
 ]
 
-# (owner, text) — wording chosen so the classifier actually lands on all
-# seven emotions; the stored label is still whatever the model really predicts.
+# (owner, text) - wording chosen so the classifier lands on all seven
+# emotions; the stored label is still whatever the model really predicts.
 SEED_TEXTS = [
     ("maya", "I am so happy right now, this is the best day of my entire year!"),
     ("ravi", "My hands are shaking and my heart is pounding, I have never been this scared."),

@@ -12,6 +12,6 @@ venv/
 .idea/
 .DS_Store
 
-# Django runtime noise (db.sqlite3 is intentionally tracked — it ships demo data)
+# Django runtime noise (db.sqlite3 is tracked on purpose - it ships demo data)
 *.log
 staticfiles/

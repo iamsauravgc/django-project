@@ -86,14 +86,12 @@ def main():
     data = prepare_data()
 
     baseline(data)
-    svc = train_svc(data)
+    train_svc(data)
     train_sgd(data)
 
     model = tune(data)
     save_artifacts(model)
 
-    # keep the untuned SVC result available for reference
-    _ = svc
     final_eval(model, data)
 
 

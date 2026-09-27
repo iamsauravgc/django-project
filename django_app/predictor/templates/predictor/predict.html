@@ -4,7 +4,7 @@
 <section class="panel">
     <h1>Emotion Detection</h1>
     <p class="lede">
-        Paste anything you wrote or received — a journal entry, a review, a message.
+        Paste anything you wrote or received: a journal entry, a review, a message.
         The model picks the dominant emotion out of seven and scores every class.
     </p>
 
@@ -39,6 +39,11 @@
                 <span class="bar-value">{{ pct|floatformat:1 }}%</span>
             </div>
         {% endfor %}
+    </div>
+
+    <div class="result-actions">
+        <a class="btn btn-primary" href="{% url 'predict' %}">Analyze another</a>
+        <a class="btn btn-ghost" href="{% url 'history' %}">View history</a>
     </div>
 </section>
 {% endif %}

@@ -1,5 +1,5 @@
 """
-Prediction records — one row per analysis, owned by the user who ran it.
+Prediction records: one row per analysis, owned by the user who ran it.
 """
 from django.contrib.auth.models import User
 from django.db import models

@@ -4,6 +4,4 @@ matplotlib==3.10.*
 seaborn==0.13.*
 scikit-learn==1.9.*
 nltk==3.10.*
-Django==4.2.*
-uvicorn==0.49.*
-python-multipart
+Django==6.0.*

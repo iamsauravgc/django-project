@@ -13,7 +13,7 @@ class EmotionForm(forms.Form):
         widget=forms.Textarea(
             attrs={
                 "rows": 5,
-                "placeholder": "Type or paste anything — a journal entry, a review, a message…",
+                "placeholder": "Type or paste anything: a journal entry, a review, a message...",
                 "autofocus": True,
             }
         ),

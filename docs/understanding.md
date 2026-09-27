@@ -1,13 +1,13 @@
-# Epic 1 — Data & EDA
+# Data and EDA
 
 > Part of the Emotion Detection Web App. Read `CLAUDE.md` first.
 
-This epic covers **E1-T2 … E1-T6** of the backlog: load the dataset, inspect
-it, collapse the 27 GoEmotions emotions into 7 core emotions, and report class
-imbalance, text-length distribution, and data-quality issues (nulls,
-duplicates, multi-label rows).
+This document covers loading the dataset, inspecting it, collapsing the 27
+GoEmotions emotions into 7 core emotions, and reporting class imbalance,
+text-length distribution, and data-quality issues (nulls, duplicates,
+multi-label rows).
 
-E1-T1 (download) was **skipped** — the dataset is already present in
+The download step was **skipped** - the dataset is already present in
 `ml/data/` as `train.tsv`, `dev.tsv`, `test.tsv`.
 
 ---
@@ -15,11 +15,11 @@ E1-T1 (download) was **skipped** — the dataset is already present in
 ## 1. Dataset
 
 - **Source:** Google GoEmotions (Reddit comments).
-- **Format:** tab-separated, 3 columns — `text \t label \t id`.
-  - `text` — the comment string.
-  - `label` — one or more integer emotion ids (0–27), comma-separated when
+- **Format:** tab-separated, 3 columns - `text \t label \t id`.
+  - `text` - the comment string.
+  - `label` - one or more integer emotion ids (0-27), comma-separated when
     multi-label (e.g. `"0,1"`).
-  - `id` — unique per example.
+  - `id` - unique per example.
 - **Splits:** train 43,410 / dev 5,426 / test 5,427 rows.
 
 All rows were loaded with explicit `string` dtypes so no integer/text parsing
@@ -27,9 +27,9 @@ loss occurs.
 
 ---
 
-## 2. The 27 → 7 emotion collapse
+## 2. The 27 -> 7 emotion collapse
 
-The GoEmotions labels are numeric ids (0–27, where **27 = neutral**). We map
+The GoEmotions labels are numeric ids (0-27, where **27 = neutral**). We map
 each id to one of 7 core emotions, defined once in `ml/preprocess.py`
 (`NUMERIC_TO_CORE`) so EDA and later training share the same mapping.
 
@@ -43,19 +43,19 @@ each id to one of 7 core emotions, defined once in `ml/preprocess.py`
 | disgust | 11 disgust |
 | neutral | 27 neutral |
 
-**Decision — ambiguous labels.** The CLAUDE.md reference table did not cover
+**Decision - ambiguous labels.** The CLAUDE.md reference table did not cover
 `admiration(0)`, `approval(4)`, `caring(5)`, and `desire(8)`. Per the
 "let EDA decide, merge <500-row classes into the closest emotion" guideline
 (CLAUDE.md open question 2), these were mapped to **joy**, the closest
 positive/affiliative emotion. This also keeps them out of the already-small
 fear/disgust buckets.
 
-**Decision — neutral as 7th class.** Per CLAUDE.md open question 5, `neutral`
+**Decision - neutral as 7th class.** Per CLAUDE.md open question 5, `neutral`
 is kept as its own class (it is the single most frequent label). This avoids
 discarding ~35% of the data and preserves class balance.
 
-**Decision — multi-label rows.** Per CLAUDE.md open question 1, multi-label
-rows are **dropped** during training (Epic 2). For EDA reporting, a multi-label
+**Decision - multi-label rows.** Per CLAUDE.md open question 1, multi-label
+rows are **dropped** during training. For EDA reporting, a multi-label
 cell like `"0,1"` is de-duplicated to its distinct core emotions
 (`collapse_labels()`).
 
@@ -80,8 +80,8 @@ All numbers below are from `train.tsv` unless noted.
 - **Imbalanced but healthy.** Every core class has **>500 rows** (smallest is
   `fear` at 726), so no further class merging is needed.
 - `joy` + `neutral` dominate (~73% combined). `fear` and `disgust` are the
-  minority classes — training must use `class_weight="balanced"` (Epic 2,
-  E2-T4) and be evaluated with **macro F1**, not accuracy.
+  minority classes - training must use `class_weight="balanced"` and be
+  evaluated with **macro F1**, not accuracy.
 
 ### 3.2 Multi-label rows
 
@@ -98,10 +98,10 @@ All numbers below are from `train.tsv` unless noted.
 | Duplicate ids | 0 | 0 | 0 |
 | Duplicate text rows | 183 | 3 | 6 |
 
-- No nulls or empty strings — data is clean at the cell level.
+- No nulls or empty strings - data is clean at the cell level.
 - A small number of **exact-duplicate texts** exist (183 in train). These are
-  harmless for EDA; Epic 2 can optionally de-duplicate before training.
-- No duplicate `id`s — the multi-label overlap is represented inside single
+  harmless for EDA; training can optionally de-duplicate beforehand.
+- No duplicate `id`s - the multi-label overlap is represented inside single
   rows (comma-separated labels), not as repeated ids.
 
 ### 3.4 Text length
@@ -115,7 +115,7 @@ Computed on single-label rows (multi-label cells excluded from length stats).
 | max | 703 | 32 |
 
 - Comments are short (median ~12 words), as expected for Reddit. TF-IDF with
-  `max_features=10000` and `ngram_range=(1,2)` (planned for Epic 2) is well
+  `max_features=10000` and `ngram_range=(1,2)` (used for training) is well
   suited; no truncation needed.
 
 ---
@@ -124,7 +124,7 @@ Computed on single-label rows (multi-label cells excluded from length stats).
 
 | File | Role |
 |---|---|
-| `ml/preprocess.py` | Defines `GOEMOTIONS_LABELS`, `NUMERIC_TO_CORE`, `CORE_EMOTIONS`, `EMOTION_COLORS`, and `collapse_labels()` / `is_single_label()`. Text-cleaning and vectorizer stubs remain for Epic 2. |
+| `ml/preprocess.py` | Defines `GOEMOTIONS_LABELS`, `NUMERIC_TO_CORE`, `CORE_EMOTIONS`, `EMOTION_COLORS`, and `collapse_labels()` / `is_single_label()`. Text cleaning and the TF-IDF vectorizer are defined here too. |
 | `ml/eda.py` | The EDA script: `load_raw`, `inspect`, `label_distribution`, `multilabel_report`, `duplicates_report`, `text_length_stats`, `plot_distributions`, `main`. |
 | `ml/eda_artifacts/labels_27.png` | 27-class label distribution bar chart. |
 | `ml/eda_artifacts/labels_7.png` | 7-class (collapsed) label distribution bar chart. |
@@ -145,7 +145,7 @@ three PNG figures into `ml/eda_artifacts/`.
 
 ---
 
-## 6. Epic 1 → Epic 2 handoff
+## 6. Handoff to training
 
 - The collapse mapping (`NUMERIC_TO_CORE`) is finalized and reusable.
 - `collapse_labels()` returns the core emotions for a label cell; the
@@ -162,8 +162,8 @@ Implemented in `ml/preprocess.py`. The earlier collapse mapping is reused; the
 new work is text cleaning, dataset loading and TF-IDF vectorization.
 
 ### Text cleaning (`clean_text`)
-Each raw comment is: lowercased; stripped of URLs (`http(s)://…`,
-`www.…`) and GoEmotions `[NAME]` placeholders; reduced to letters, numbers and
+Each raw comment is: lowercased; stripped of URLs (`http(s)://...`,
+`www....`) and GoEmotions `[NAME]` placeholders; reduced to letters, numbers and
 spaces (punctuation and other special characters removed); whitespace-collapsed;
 and filtered to drop English stopwords (NLTK `stopwords`, downloaded on first
 use if missing). Rows that become empty after cleaning are discarded.
@@ -182,7 +182,7 @@ has 36,206 usable rows (down from 43,410 raw).
 
 ### Train / validation / test splits
 The data ships pre-split by Google (train / dev / test, already disjoint), so
-no re-split is performed — the provided splits are used as-is. This inherently
+no re-split is performed - the provided splits are used as-is. This inherently
 prevents leakage: the vectorizer is fit only on train and then applied to dev
 and test.
 
@@ -233,7 +233,7 @@ with macro-F1.
 | SGDClassifier (log_loss, balanced) | 0.5177 |
 
 ### Hyperparameter tuning
-`GridSearchCV` over `C ∈ [0.1, 1, 10]` (3-fold, `f1_macro`) selected
+`GridSearchCV` over `C in [0.1, 1, 10]` (3-fold, `f1_macro`) selected
 **C = 0.1** (cv macro-F1 0.4907). The tuned LinearSVC is saved as
 `ml/model/model.pkl`. It is kept as the production model even though SGD scored
 slightly higher on dev, per the project's model decision.
@@ -258,19 +258,19 @@ classes.
 
 ### Error analysis
 `confusion_matrix` on the dev set is saved to `ml/eda_artifacts/confusion.png`.
-The dominant confusions are all with **neutral** — the model leans on the
+The dominant confusions are all with **neutral** - the model leans on the
 majority class for the harder emotions:
 
-| Actual → Predicted | Count |
+| Actual -> Predicted | Count |
 |---|---:|
-| joy → neutral | 280 |
-| surprise → neutral | 192 |
-| anger → neutral | 163 |
-| neutral → joy | 162 |
-| neutral → surprise | 153 |
-| neutral → anger | 137 |
-| neutral → sadness | 76 |
-| joy → surprise | 65 |
+| joy -> neutral | 280 |
+| surprise -> neutral | 192 |
+| anger -> neutral | 163 |
+| neutral -> joy | 162 |
+| neutral -> surprise | 153 |
+| neutral -> anger | 137 |
+| neutral -> sadness | 76 |
+| joy -> surprise | 65 |
 
 ### Confidence scores
 LinearSVC has no `predict_proba`; per-class confidence is obtained at inference

@@ -1,5 +1,5 @@
 """
-Django settings for emotion_detector MVP (Epics 4-5)
+Django settings for the emotion detector.
 """
 from pathlib import Path
 
@@ -77,7 +77,7 @@ LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
 
-# ML artifacts — loaded in predictor/utils.py (E5-T1)
+# Trained model files, loaded in predictor/utils.py
 MODEL_DIR = BASE_DIR.parent / "ml" / "model"
 if not MODEL_DIR.exists():  # fallback if the app is ever run from inside django_app/
     MODEL_DIR = BASE_DIR / "ml" / "model"

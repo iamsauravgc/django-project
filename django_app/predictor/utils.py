@@ -1,5 +1,5 @@
 """
-Inference utilities — load the trained pickles and score free text.
+Inference utilities: load the trained pickles and score free text.
 
 Confidence per emotion comes from a softmax over LinearSVC's
 ``decision_function``, because SVCs expose no ``predict_proba``
@@ -29,7 +29,7 @@ class ArtifactMissing(RuntimeError):
 
 @lru_cache(maxsize=1)
 def load_artifacts():
-    """Load and memoise (model, vectorizer) — one disk read per process."""
+    """Load and cache (model, vectorizer) so each process reads them once."""
     model_path = Path(settings.MODEL_PATH)
     vectorizer_path = Path(settings.VECTORIZER_PATH)
 

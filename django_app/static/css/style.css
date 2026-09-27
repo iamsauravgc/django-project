@@ -1,4 +1,4 @@
-/* Emotion Detector — hand-written styles for the MVP */
+/* Emotion Detector styles */
 
 :root {
     --bg: #0f1115;
@@ -124,7 +124,8 @@ textarea:focus, input:focus {
     box-shadow: 0 0 0 3px rgba(124, 156, 255, .18);
 }
 
-.help, .errorlist { font-size: 13px; }
+.help, .helptext, .errorlist { font-size: 13px; }
+.helptext { display: block; color: var(--muted); margin-top: 4px; }
 .errorlist {
     color: var(--danger);
     margin: 6px 0 0;
@@ -245,6 +246,12 @@ textarea:focus, input:focus {
     color: var(--muted);
 }
 .bar-row.is-top .bar-value { color: var(--text); font-weight: 600; }
+
+.result-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
 
 /* ---------- history ---------- */
 .summary {

@@ -1,5 +1,5 @@
 """
-Prediction flow — analyze text, store it, replay the user's history.
+Prediction flow: analyze text, store it, show the user's history.
 """
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -44,7 +44,7 @@ def predict_view(request):
 
 @login_required
 def history_view(request):
-    """The signed-in user's own predictions — never anyone else's."""
+    """The signed-in user's own predictions, nobody else's."""
     predictions = Prediction.objects.filter(user=request.user)
     counts = (
         Prediction.objects.filter(user=request.user)
