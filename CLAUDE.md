@@ -180,12 +180,6 @@ emotion_detector/
 - E5-T6: Save prediction to DB per user
 - E5-T7: Prediction history page
 
-### Epic 6 — Phase 2 (Post MVP)
-- E6-T1: FastAPI `/predict` endpoint
-- E6-T2: Django calls FastAPI via httpx
-- E6-T3: Gemini API explanation
-- E6-T4: Emotion trend dashboard per user
-
 ---
 
 ## Emotion Mapping (27 → 6)

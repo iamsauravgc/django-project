@@ -162,11 +162,16 @@ Implemented in `ml/preprocess.py`. The earlier collapse mapping is reused; the
 new work is text cleaning, dataset loading and TF-IDF vectorization.
 
 ### Text cleaning (`clean_text`)
-Each raw comment is: lowercased; stripped of URLs (`http(s)://...`,
-`www....`) and GoEmotions `[NAME]` placeholders; reduced to letters, numbers and
-spaces (punctuation and other special characters removed); whitespace-collapsed;
-and filtered to drop English stopwords (NLTK `stopwords`, downloaded on first
-use if missing). Rows that become empty after cleaning are discarded.
+Each raw comment is: stripped of URLs (`http(s)://...`, `www....`) and
+GoEmotions `[NAME]` placeholders (case-insensitively - the earlier version
+lowercased first, so the pattern never matched and `[NAME]` leaked through as
+the token "name"); lowercased; reduced to letters, numbers and spaces
+(punctuation and other special characters removed); and whitespace-collapsed.
+Stopword removal is now **off by default** (`DEFAULT_REMOVE_STOPWORDS = False`):
+the dev comparison showed keeping stopwords - negations like "not" are
+emotion-bearing - was worth about +0.02 macro-F1. Training and serving both
+read the same flag, so they cannot drift. Rows that become empty after
+cleaning are discarded.
 
 ### Dataset loading (`load_tsv`)
 Reads a TSV (`text \t label \t id`), **drops multi-label rows** (a label cell
@@ -178,13 +183,17 @@ with `text` (cleaned) and `label` (core emotion).
 Multi-label rows are dropped rather than kept. This was chosen earlier because
 GoEmotions still has tens of thousands of single-label rows afterwards, and
 dropping avoids ambiguous training targets. After dropping, the training split
-has 36,206 usable rows (down from 43,410 raw).
+has 36,284 usable rows with the current cleaning (down from 43,410 raw).
 
 ### Train / validation / test splits
 The data ships pre-split by Google (train / dev / test, already disjoint), so
-no re-split is performed - the provided splits are used as-is. This inherently
-prevents leakage: the vectorizer is fit only on train and then applied to dev
-and test.
+no re-split is performed - the provided splits are used as-is. During model
+selection this inherently prevents leakage: the vectorizer is fit only on
+train and then applied to dev and test. Only as a **final step** (`--refit`),
+after every hyperparameter has already been chosen on dev, is the winning
+pipeline re-fit on train+dev; the test set is still never used for any choice.
+`ml/model/training_scope.txt` records which scope produced the current
+pickles.
 
 ### Class imbalance (`class_weights`)
 The minority classes (fear, disgust) are far smaller than joy/neutral, so
@@ -193,99 +202,127 @@ The minority classes (fear, disgust) are far smaller than joy/neutral, so
 time. Evaluation uses macro-F1, not accuracy.
 
 ### TF-IDF vectorization (`get_vectorizer`, `prepare_data`)
-A `TfidfVectorizer(max_features=10000, ngram_range=(1, 2), min_df=2,
-sublinear_tf=True)` is **fit on the training texts only**, then used to
-transform dev and test. `prepare_data()` runs the full pipeline and writes the
-fitted vectorizer to `ml/model/vectorizer.pkl` for later training and for the
-Django runtime.
+The word-level vectorizer is a
+`TfidfVectorizer(max_features=10000, ngram_range=(1, 2), min_df=2,
+sublinear_tf=True)` **fit on the training texts only**. `prepare_data()` runs
+that baseline pipeline and prints row/feature counts; it deliberately does
+**not** write pickles - production artifacts are written only by
+`ml/train.py`, whose winning configuration is a `FeatureUnion` of word (1, 3)
+and char_wb (2, 6) TF-IDF with a 110,000-feature budget.
 
 Resulting matrix sizes after cleaning:
 
-| Split | Rows | Features |
+| Split | Rows | Features (word baseline) |
 |---|---:|---:|
-| Train | 36,206 | 10,000 |
-| Dev | 4,535 | 10,000 |
-| Test | 4,581 | 10,000 |
+| Train | 36,284 | 10,000 |
+| Dev | 4,547 | 10,000 |
+| Test | 4,588 | 10,000 |
 
 ### How to run
 ```bash
 python ml/preprocess.py
 ```
-Prints the per-split row counts and saves `ml/model/vectorizer.pkl`.
+Prints the per-split row counts (word baseline).
 
 ---
 
 ## Training & evaluation
 
-Implemented in `ml/train.py` (training) and `ml/evaluate.py` (dev metrics +
-error analysis). The vectorizer from the preprocessing stage is reused, so
-there is no leakage: features are fit on train only.
+Implemented in `ml/train.py` (variant comparison, tuning, artifact writing)
+and `ml/evaluate.py` (dev report + confusion matrix). Every design choice -
+features, C, class weights, calibration, decision boosts - is made on the
+**dev** set; the test set is scored exactly once, at the very end of a final
+run. `ml/preprocess.py` also holds the two picklable model wrappers.
 
-### Models compared
-A most-frequent baseline establishes the floor, then LinearSVC (the chosen
-model per the project decision) and SGDClassifier are compared on the dev set
-with macro-F1.
+### Models compared (dev macro-F1)
 
-| Model | Dev macro-F1 |
+| Configuration | Dev macro-F1 |
 |---|---:|
-| Baseline (most_frequent) | 0.0768 |
-| LinearSVC (class_weight="balanced") | 0.4776 |
-| SGDClassifier (log_loss, balanced) | 0.5177 |
+| Baseline (most_frequent) | 0.077 |
+| word TF-IDF + stopword removal (previous production) | 0.474 |
+| word TF-IDF, stopwords kept | 0.496 |
+| word (1,2) + char_wb (3,5), stopwords removed | 0.490 |
+| word (1,2) + char_wb (3,5), stopwords kept | 0.524 |
+| word (1,3) + char_wb (2,6), wide budget, stopwords kept | **0.538** |
+| + C=0.1, weak-class weights x1.5, sigmoid calibration | 0.569 |
+| + per-class decision boosts | **0.592** |
+
+Reference points: SGDClassifier (log loss) reaches 0.567 raw / 0.592 with
+boosts - it ties but never clearly beats the LinearSVC pipeline, so
+LinearSVC stays per the project decision. A soft ensemble of calibrated
+LinearSVCs at C in {0.05, 0.1, 0.3} also tied the single model (0.591) and
+was not adopted (adoption requires winning by more than 0.0005 on dev).
 
 ### Hyperparameter tuning
-`GridSearchCV` over `C in [0.1, 1, 10]` (3-fold, `f1_macro`) selected
-**C = 0.1** (cv macro-F1 0.4907). The tuned LinearSVC is saved as
-`ml/model/model.pkl`. It is kept as the production model even though SGD scored
-slightly higher on dev, per the project's model decision.
+`C` is chosen from {0.03, 0.1, 0.3, 1, 3} by dev macro-F1: **C = 0.1**
+(dev 0.561). Class weights are balanced, with the three weakest classes
+(anger, surprise, disgust) upweighted **x1.5** (dev sweep: 1.2 was +0.0003,
+1.5 was +0.004).
 
-### Final test evaluation
-Scored once, on the held-out test set:
+### Calibration and confidence scores
+LinearSVC has no `predict_proba`, so the saved model is wrapped in
+`CalibratedClassifierCV(method="sigmoid")` (3-fold). Confidence shown in the
+UI is the calibrated probability of the winning class; `predictor.utils` still
+keeps a softmax-over-`decision_function` fallback for plain linear models.
+
+### Decision boosts
+`ml/preprocess.py::BoostedClassifier` multiplies each class's calibrated
+probability by a dev-tuned factor before the argmax, then renormalises - so
+the verdict, the seven confidence bars and the saved history stay consistent
+and still sum to 1. The dev coordinate search settled on: fear 1.3,
+surprise 1.4, anger 1.2, disgust 1.0, sadness 1.0, joy 0.8, neutral 0.65.
+Boosts were worth **+0.026** macro-F1 on test (0.5651 raw -> 0.5911 served).
+
+### Final test evaluation (served model, scored once)
 
 | Emotion | Precision | Recall | F1 |
 |---|---:|---:|---:|
-| joy | 0.8127 | 0.7016 | 0.7531 |
-| anger | 0.4645 | 0.3776 | 0.4166 |
-| fear | 0.4000 | 0.7792 | 0.5286 |
-| sadness | 0.4788 | 0.5676 | 0.5194 |
-| surprise | 0.3844 | 0.3415 | 0.3617 |
-| disgust | 0.3379 | 0.6447 | 0.4434 |
-| neutral | 0.6019 | 0.6681 | 0.6333 |
-| **macro avg** | 0.4972 | 0.5829 | **0.5223** |
+| joy | 0.7738 | 0.7511 | 0.7623 |
+| anger | 0.5042 | 0.4596 | 0.4809 |
+| fear | 0.7027 | 0.6753 | 0.6887 |
+| sadness | 0.6902 | 0.4903 | 0.5734 |
+| surprise | 0.4911 | 0.4900 | 0.4905 |
+| disgust | 0.6591 | 0.3816 | 0.4833 |
+| neutral | 0.6217 | 0.7007 | 0.6589 |
+| **macro avg** | 0.6347 | 0.5641 | **0.5911** |
 
-Test macro-F1 is **0.5223**, above the most-frequent baseline (~0.08) but
-**below the 0.60 success target**. Anger, surprise and disgust are the weak
-classes.
+Test accuracy is 0.6528. The score improved from 0.5223 to **0.5911**; the
+0.60 success target is missed by 0.009. Weak classes remain anger (0.48),
+disgust (0.48) and surprise (0.49).
 
 ### Error analysis
-`confusion_matrix` on the dev set is saved to `ml/eda_artifacts/confusion.png`.
-The dominant confusions are all with **neutral** - the model leans on the
-majority class for the harder emotions:
+Dominant confusions on the test set are still with **neutral** - the model
+falls back on the majority class for the harder emotions:
 
 | Actual -> Predicted | Count |
 |---|---:|
-| joy -> neutral | 280 |
-| surprise -> neutral | 192 |
-| anger -> neutral | 163 |
-| neutral -> joy | 162 |
-| neutral -> surprise | 153 |
-| neutral -> anger | 137 |
-| neutral -> sadness | 76 |
-| joy -> surprise | 65 |
+| joy -> neutral | 270 |
+| neutral -> joy | 206 |
+| anger -> neutral | 175 |
+| surprise -> neutral | 145 |
+| neutral -> surprise | 125 |
+| neutral -> anger | 117 |
+| sadness -> neutral | 64 |
+| joy -> surprise | 54 |
 
-### Confidence scores
-LinearSVC has no `predict_proba`; per-class confidence is obtained at inference
-by applying a softmax to `decision_function` (wired in the prediction stage).
+`python ml/evaluate.py` still writes a dev confusion matrix to
+`ml/eda_artifacts/confusion.png`, and prints an in-sample caveat when the
+saved artifacts were refit on train+dev.
 
 ### How to run
 ```bash
-python ml/train.py
-python ml/evaluate.py
+python ml/train.py --dev-only   # compare variants and tune on dev, no test pass
+python ml/train.py --refit      # final: save pickles, refit on train+dev, test eval
+python ml/evaluate.py           # dev report + confusion matrix
 ```
-`train.py` prints the baseline/SVC/SGD comparison, tunes C, saves `model.pkl`,
-and reports the final test macro-F1. `evaluate.py` prints the dev report and
-the most-confused pairs, and writes `confusion.png`.
+`ml/model/training_scope.txt` records whether the saved artifacts were fit on
+train only or train+dev.
 
 ### Notes for improvement
-To reach the 0.60 target: add character n-grams, revisit stopword removal, try
-class-probability calibration (`CalibratedClassifierCV`), or enrich the collapse
-mapping for the smallest classes (fear, disgust).
+The remaining gap to 0.60 (0.009) is structural rather than parametric:
+fear (77 test rows) and disgust (76) are tiny classes, and the 27 -> 7
+collapse mapping could be revisited for them (the lever the project brief
+reserved for EDA). Beyond that, closing the gap means leaving the LinearSVC
+decision - an ensemble that actually beats the single model, or a fine-tuned
+encoder. The documented feature levers (character n-grams, stopword policy,
+calibration) have been exercised.

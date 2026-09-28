@@ -23,6 +23,7 @@ from ml.preprocess import CORE_EMOTIONS, DATA_DIR, MODEL_DIR, get_vectorizer, lo
 
 ARTIFACT_DIR = ROOT / "ml" / "eda_artifacts"
 LABELS = CORE_EMOTIONS
+SCOPE_FILE = MODEL_DIR / "training_scope.txt"
 
 
 def load_artifacts():
@@ -74,6 +75,13 @@ def error_analysis(y_true, y_pred):
 
 def main():
     model, vectorizer = load_artifacts()
+    scope = SCOPE_FILE.read_text().strip() if SCOPE_FILE.exists() else "train"
+    if scope != "train":
+        print(
+            "NOTE: artifacts were refit on train+dev, so the dev metrics below are\n"
+            "      in-sample (optimistic), not held-out. The held-out number is the\n"
+            "      test macro-F1 printed at the end of `python ml/train.py --refit`.\n"
+        )
     y_true, y_pred = evaluate_dev(model, vectorizer)
     error_analysis(y_true, y_pred)
     print(f"\nConfusion matrix saved to {ARTIFACT_DIR / 'confusion.png'}")

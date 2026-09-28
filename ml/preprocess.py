@@ -2,12 +2,16 @@
 Shared preprocessing and feature engineering for the emotion detector.
 
 Defines the GoEmotions 27 -> 7 emotion collapse mapping and the text cleaning,
-dataset loading and TF-IDF vectorization used before training.
+dataset loading and TF-IDF vectorization used before training. Also holds the
+picklable model wrappers (BoostedClassifier, SoftEnsemble) shared by training
+and serving - they must live in an importable module, never __main__, so
+model.pkl can be loaded from ml/evaluate.py and from the Django app.
 """
 import re
 from pathlib import Path
 
 import nltk
+import numpy as np
 import pandas as pd
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -53,18 +57,31 @@ except LookupError:
     STOPWORDS = set(stopwords.words("english"))
 
 _URL_RE = re.compile(r"https?://\S+|www\.\S+")
-_NAME_RE = re.compile(r"\[NAME\]")
+_NAME_RE = re.compile(r"\[NAME\]", re.IGNORECASE)
 _SPECIAL_RE = re.compile(r"[^a-z0-9\s]")
 _WS_RE = re.compile(r"\s+")
 
+# Stopword policy shared by training and serving. train.py prints a warning
+# if this does not match the configuration of the saved artifacts.
+DEFAULT_REMOVE_STOPWORDS = False
 
-def clean_text(text: str) -> str:
-    """Lowercase, strip URLs/[NAME], drop punctuation, remove stopwords."""
+
+def clean_text(text: str, remove_stopwords: bool | None = None) -> str:
+    """Lowercase, strip URLs/[NAME], drop punctuation, optionally stopwords.
+
+    ``remove_stopwords=None`` follows ``DEFAULT_REMOVE_STOPWORDS`` so the
+    serving path (django predictor.utils) always matches the production
+    artifacts without having to know the training configuration.
+    """
+    if remove_stopwords is None:
+        remove_stopwords = DEFAULT_REMOVE_STOPWORDS
     text = text.lower()
     text = _URL_RE.sub(" ", text)
     text = _NAME_RE.sub(" ", text)
     text = _SPECIAL_RE.sub(" ", text)
     text = _WS_RE.sub(" ", text).strip()
+    if not remove_stopwords:
+        return text
     return " ".join(w for w in text.split() if w not in STOPWORDS)
 
 
@@ -87,7 +104,7 @@ def is_single_label(label_str: str) -> bool:
     return "," not in str(label_str)
 
 
-def load_tsv(path) -> pd.DataFrame:
+def load_tsv(path, *, remove_stopwords: bool | None = None) -> pd.DataFrame:
     """Read a GoEmotions TSV, drop multi-label rows, collapse and clean."""
     df = pd.read_csv(
         path,
@@ -99,29 +116,30 @@ def load_tsv(path) -> pd.DataFrame:
     )
     df = df[df["label"].apply(is_single_label)].copy()
     df["label"] = df["label"].apply(lambda s: NUMERIC_TO_CORE[int(s)])
-    df["text"] = df["text"].apply(clean_text)
+    df["text"] = df["text"].apply(lambda t: clean_text(t, remove_stopwords=remove_stopwords))
     df = df[df["text"].str.len() > 0]
     return df.reset_index(drop=True)
 
 
-def get_vectorizer() -> TfidfVectorizer:
-    """Unfitted TF-IDF vectorizer; fit on train only to avoid leakage."""
-    return TfidfVectorizer(max_features=10000, ngram_range=(1, 2), min_df=2, sublinear_tf=True)
+def get_vectorizer(max_features: int = 10000) -> TfidfVectorizer:
+    """Unfitted word-level TF-IDF vectorizer; fit on train only to avoid leakage."""
+    return TfidfVectorizer(max_features=max_features, ngram_range=(1, 2), min_df=2, sublinear_tf=True)
 
 
 def class_weights(labels) -> dict:
     """Balanced class weights for the given label list."""
     classes = sorted(set(labels))
-    weights = compute_class_weight("balanced", classes=classes, y=labels)
+    weights = compute_class_weight("balanced", classes=np.asarray(classes), y=labels)
     return dict(zip(classes, weights))
 
 
 def prepare_data():
-    """Load splits, fit the vectorizer on train, transform all, save vectorizer.pkl."""
-    import pickle
+    """Load the three splits, fit the word TF-IDF on train, return matrices.
 
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-
+    Artifacts (vectorizer.pkl / model.pkl) are written only by ml/train.py,
+    so a standalone run here can never overwrite the production vectorizer
+    with one that does not match the trained model.
+    """
     train = load_tsv(DATA_DIR / "train.tsv")
     dev = load_tsv(DATA_DIR / "dev.tsv")
     test = load_tsv(DATA_DIR / "test.tsv")
@@ -130,9 +148,6 @@ def prepare_data():
     X_train = vectorizer.fit_transform(train["text"])
     X_dev = vectorizer.transform(dev["text"])
     X_test = vectorizer.transform(test["text"])
-
-    with open(MODEL_DIR / "vectorizer.pkl", "wb") as f:
-        pickle.dump(vectorizer, f)
 
     return {
         "X_train": X_train, "X_dev": X_dev, "X_test": X_test,
@@ -145,7 +160,55 @@ def main():
     print(f"Train: {data['X_train'].shape[0]:,} rows, {data['X_train'].shape[1]:,} features")
     print(f"Dev:   {data['X_dev'].shape[0]:,} rows")
     print(f"Test:  {data['X_test'].shape[0]:,} rows")
-    print(f"Vectorizer saved to {MODEL_DIR / 'vectorizer.pkl'}")
+    print("Note: production artifacts are written by ml/train.py, not here.")
+
+
+# ---------------------------------------------------------------------------
+# Picklable model wrappers. Shared by ml/train.py (saving) and Django's
+# predictor.utils (loading); see the module docstring for why they live here.
+# ---------------------------------------------------------------------------
+
+class BoostedClassifier:
+    """Wraps a fitted classifier to apply dev-tuned decision boosts.
+
+    predict_proba returns boosted, renormalised probabilities so argmax,
+    the confidence bars and saved history always stay consistent. Loaded
+    by django predictor.utils via model.pkl.
+    """
+
+    def __init__(self, estimator, boosts: dict):
+        self.estimator = estimator
+        self.boosts = boosts
+
+    @property
+    def classes_(self):
+        return self.estimator.classes_
+
+    def predict_proba(self, X):
+        probs = self.estimator.predict_proba(X)
+        weights = np.array([self.boosts.get(c, 1.0) for c in self.classes_])
+        boosted = probs * weights
+        return boosted / boosted.sum(axis=1, keepdims=True)
+
+    def predict(self, X):
+        return np.asarray(self.classes_)[np.argmax(self.predict_proba(X), axis=1)]
+
+
+class SoftEnsemble:
+    """Mean of calibrated member probabilities; duck-types predict_proba."""
+
+    def __init__(self, members):
+        self.members = members
+
+    @property
+    def classes_(self):
+        return self.members[0].classes_
+
+    def predict_proba(self, X):
+        return np.mean([m.predict_proba(X) for m in self.members], axis=0)
+
+    def predict(self, X):
+        return np.asarray(self.classes_)[np.argmax(self.predict_proba(X), axis=1)]
 
 
 if __name__ == "__main__":

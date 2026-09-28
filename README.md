@@ -68,24 +68,40 @@ between accounts, and the seed command.
 ## The model
 
 ```bash
-python ml/eda.py          # class balance, text length, chart PNGs
-python ml/preprocess.py   # cleaning + TF-IDF, saves vectorizer.pkl
-python ml/train.py        # baseline vs LinearSVC vs SGD, tunes C, saves model.pkl
-python ml/evaluate.py     # dev report + confusion matrix
+python ml/eda.py                    # class balance, text length, chart PNGs
+python ml/preprocess.py             # baseline cleaning + TF-IDF, prints shapes
+python ml/train.py --dev-only       # compare feature/config variants on dev
+python ml/train.py --refit          # tune, save pickles, refit, final test eval
+python ml/evaluate.py               # dev report + confusion matrix
 ```
 
-| Model | Dev macro-F1 |
-|---|---|
-| Most-frequent baseline | 0.0768 |
-| LinearSVC (balanced) | 0.4776 |
-| SGDClassifier (log loss) | 0.5177 |
+Pipeline (every choice made on dev; test scored once at the end):
 
-Final test macro-F1 of the tuned LinearSVC (C=0.1): **0.5223**.
+- word (1,3) + char_wb (2,6) TF-IDF, stopwords **kept** (the old filter was
+  dropping emotion-critical negations like "not")
+- LinearSVC (balanced, weak classes x1.5), C=0.1 selected on dev
+- sigmoid calibration (`CalibratedClassifierCV`) for honest probabilities
+- per-class decision boosts tuned on dev, applied inside the saved model
+  (`ml/preprocess.py`) so verdict and confidence bars stay consistent
+- final refit on train+dev
 
-Artifacts live in `ml/model/model.pkl` and `ml/model/vectorizer.pkl`.
+| Stage | Dev macro-F1 |
+|---|---:|
+| Most-frequent baseline | 0.077 |
+| Previous production (word TF-IDF + stopwords) | 0.474 |
+| Best feature config (word+char, stopwords kept) | 0.538 |
+| + C, class weights, calibration | 0.569 |
+| + per-class decision boosts | **0.592** |
 
-LinearSVC has no `predict_proba`, so confidence is a softmax over its
-`decision_function`.
+**Final test macro-F1: 0.5911** (was 0.5223 before this pass), accuracy 0.653.
+
+Artifacts live in `ml/model/model.pkl` (a `BoostedClassifier` wrapper around
+calibrated LinearSVC) and `ml/model/vectorizer.pkl`; `training_scope.txt`
+records whether the saved model was fit on train only or train+dev.
+
+LinearSVC has no `predict_proba`, so confidence is the sigmoid-calibrated
+probability of the winning class (softmax over `decision_function` remains as
+a fallback in `predictor/utils.py` for plain linear models).
 
 ## Project structure
 
@@ -112,9 +128,7 @@ CLAUDE.md          project brief
 
 ## Known limitations
 
-- Test macro-F1 is 0.5223, below the 0.60 goal. Weak classes: anger,
-  surprise, disgust.
-- `ml/preprocess.py` lowercases text before stripping the GoEmotions `[NAME]`
-  placeholder, so `[NAME]` survives as the word "name". Fixing it means
-  retraining.
+- Test macro-F1 is 0.5911, just under the 0.60 goal (missed by 0.009).
+  Weak classes: anger (0.48), disgust (0.48), surprise (0.49); disgust and
+  fear have fewer than 80 test rows each, so their scores are noisy.
 - Single-label output only: one dominant emotion per text.
