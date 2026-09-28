@@ -15,6 +15,9 @@ The classifier is TF-IDF + LinearSVC trained on Google's GoEmotions dataset
 - History page: your own rows only, with per-emotion summary counts
 - Django admin for browsing every prediction
 - Seed command that fills the database with realistic demo data
+- Crisis-phrase safety backoff: self-harm phrasing is always served as
+  sadness (`ml/crisis.py`), because the bare model predicts joy/neutral
+  for it (GoEmotions contains almost no such rows)
 
 ## Tech stack
 
@@ -61,9 +64,10 @@ python django_app/manage.py seed_db --reset
 python django_app/manage.py test accounts predictor
 ```
 
-28 tests covering auth (register/login/logout/redirects), prediction
+32 tests covering auth (register/login/logout/redirects), prediction
 (saves rows, scores sum to 1, short input rejected), history isolation
-between accounts, and the seed command.
+between accounts, the seed command, and the crisis backoff (self-harm
+inputs served as sadness, ordinary text untouched).
 
 ## The model
 
@@ -73,6 +77,7 @@ python ml/preprocess.py             # baseline cleaning + TF-IDF, prints shapes
 python ml/train.py --dev-only       # compare feature/config variants on dev
 python ml/train.py --refit          # tune, save pickles, refit, final test eval
 python ml/evaluate.py               # dev report + confusion matrix
+python ml/eval_crisis.py            # before/after report for the crisis backoff
 ```
 
 Pipeline (every choice made on dev; test scored once at the end):
@@ -107,10 +112,10 @@ a fallback in `predictor/utils.py` for plain linear models).
 
 ```
 ml/
-  data/            train.tsv, dev.tsv, test.tsv
+  data/            train.tsv, dev.tsv, test.tsv, crisis_eval.tsv
   model/           model.pkl, vectorizer.pkl
   eda_artifacts/   charts and confusion matrix
-  eda.py preprocess.py train.py evaluate.py
+  eda.py preprocess.py train.py evaluate.py eval_crisis.py crisis.py
 
 django_app/
   manage.py
@@ -121,6 +126,7 @@ django_app/
     templates/     predict.html, history.html
   templates/       base.html
   static/css/      style.css
+  static/          favicon.svg
 
 docs/understanding.md
 CLAUDE.md          project brief

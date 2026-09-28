@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .models import EMOTION_CHOICES, Prediction
-from .utils import load_artifacts, predict_emotion
+from .utils import ROOT, load_artifacts, predict_emotion
 
 LABELS = [label for label, _ in EMOTION_CHOICES]
 
@@ -37,6 +37,54 @@ class ArtifactTests(TestCase):
         result = predict_emotion("the and or but")
         self.assertIn(result["predicted"], LABELS)
         self.assertEqual(len(result["scores"]), len(LABELS))
+
+
+class CrisisBackoffTests(TestCase):
+    """Self-harm inputs must be served as sadness (see ml/crisis.py),
+    because GoEmotions has almost none of this language and the bare
+    model predicts joy/neutral/anger for it."""
+
+    def test_self_harm_inputs_are_forced_to_sadness(self):
+        samples = [
+            "i will do suicide",
+            "sucide",
+            "suicide",
+            "life is not worthy living",
+            "i want to kill myself",
+            "i just want to die",
+        ]
+        for text in samples:
+            with self.subTest(text=text):
+                result = predict_emotion(text)
+                self.assertEqual(result["predicted"], "sadness")
+                self.assertIsNotNone(result["crisis_phrase"])
+                self.assertAlmostEqual(
+                    sum(result["scores"].values()), 1.0, places=5
+                )
+
+    def test_ordinary_text_is_untouched_by_backoff(self):
+        result = predict_emotion("I am so happy, this is the best day ever!")
+        self.assertIsNone(result["crisis_phrase"])
+        self.assertEqual(result["predicted"], "joy")
+
+    def test_metaphorical_kill_does_not_trigger_backoff(self):
+        result = predict_emotion("this job is killing me")
+        self.assertIsNone(result["crisis_phrase"])
+
+    def test_full_crisis_slice_through_serving_path(self):
+        slice_path = ROOT / "ml" / "data" / "crisis_eval.tsv"
+        with open(slice_path, encoding="utf-8") as handle:
+            lines = [line.rstrip("\n") for line in handle if line.strip()]
+
+        for line in lines:
+            text, expected, kind = line.split("\t")
+            with self.subTest(text=text):
+                result = predict_emotion(text)
+                self.assertEqual(result["predicted"], expected)
+                if kind == "crisis":
+                    self.assertIsNotNone(result["crisis_phrase"])
+                else:
+                    self.assertIsNone(result["crisis_phrase"])
 
 
 class PredictViewTests(TestCase):

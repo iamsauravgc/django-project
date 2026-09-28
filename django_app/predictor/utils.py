@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from ml.crisis import apply_crisis_backoff  # noqa: E402
 from ml.preprocess import clean_text  # noqa: E402  (needs ROOT on sys.path first)
 
 
@@ -73,6 +74,14 @@ def predict_emotion(text: str) -> dict:
         probabilities = np.asarray(model.predict_proba(features)).reshape(-1)
 
     labels = list(model.classes_)
+
+    # Safety net: self-harm phrasing is nearly absent from GoEmotions
+    # (see ml/crisis.py), so force sadness above the argmax for those
+    # inputs; everything else passes through untouched.
+    probabilities, crisis_phrase = apply_crisis_backoff(
+        probabilities, labels, text
+    )
+
     order = np.argsort(probabilities)[::-1]
 
     ranked = {labels[i]: float(probabilities[i]) for i in order}
@@ -86,6 +95,7 @@ def predict_emotion(text: str) -> dict:
         "confidence": confidence,
         "confidence_pct": f"{confidence * 100:.1f}%",
         "scores": ranked,
+        "crisis_phrase": crisis_phrase,
         # flat rows so templates never have to do dictionary-key lookups
         "score_list": [
             {
