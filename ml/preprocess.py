@@ -1,12 +1,3 @@
-"""
-Shared preprocessing and feature engineering for the emotion detector.
-
-Defines the GoEmotions 27 -> 7 emotion collapse mapping and the text cleaning,
-dataset loading and TF-IDF vectorization used before training. Also holds the
-picklable model wrappers (BoostedClassifier, SoftEnsemble) shared by training
-and serving - they must live in an importable module, never __main__, so
-model.pkl can be loaded from ml/evaluate.py and from the Django app.
-"""
 import re
 from pathlib import Path
 

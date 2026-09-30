@@ -1,14 +1,3 @@
-"""
-Fill the database with demo accounts and a realistic prediction history.
-
-Every seeded row is a genuine ``predict_emotion()`` call, so confidence
-scores and the seven-way breakdown are exactly what the live app would
-produce. Timestamps are backdated across the last two weeks so the history
-page looks lived-in.
-
-    python manage.py seed_db            # seed once
-    python manage.py seed_db --reset    # wipe demo history and seed again
-"""
 from datetime import timedelta
 
 from django.contrib.auth.models import User

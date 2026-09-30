@@ -1,21 +1,3 @@
-"""
-Crisis-phrase backoff for the serving path.
-
-Why this exists: GoEmotions barely contains self-harm language. In
-train.tsv the words "suicide"/"kill myself" appear in only two rows,
-both jokes labeled joy, and "kill myself" itself never appears once
-multi-label rows are dropped. A TF-IDF model therefore learns
-suicide -> joy, and the dev/test splits cannot expose the failure
-because they contain zero such rows, so macro-F1 never sees it.
-
-apply_crisis_backoff forces sadness above the model argmax when the
-input matches a curated phrase, so high-stakes inputs never return
-joy or neutral. Inputs without a phrase are passed through untouched,
-bit for bit.
-
-Shared by django predictor.utils (serving) and ml/eval_crisis.py
-(evaluation) so the two can never drift apart.
-"""
 import re
 
 import numpy as np

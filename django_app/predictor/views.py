@@ -1,6 +1,3 @@
-"""
-Prediction flow: analyze text, store it, show the user's history.
-"""
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count

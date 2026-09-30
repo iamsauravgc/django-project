@@ -1,11 +1,3 @@
-"""
-Inference utilities: load the trained pickles and score free text.
-
-Confidence per emotion comes from a softmax over LinearSVC's
-``decision_function``, because SVCs expose no ``predict_proba``
-(see docs/understanding.md). Text cleaning is imported straight from
-``ml.preprocess`` so training and serving can never drift apart.
-"""
 import pickle
 import sys
 from functools import lru_cache

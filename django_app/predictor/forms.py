@@ -1,6 +1,3 @@
-"""
-Forms for the prediction flow.
-"""
 from django import forms
 
 

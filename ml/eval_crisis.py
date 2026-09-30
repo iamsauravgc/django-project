@@ -1,21 +1,3 @@
-"""
-Evaluation of the crisis-phrase backoff (ml/crisis.py) on the
-hand-labeled slice ml/data/crisis_eval.tsv.
-
-The official dev/test splits contain no self-harm phrasing, so
-macro-F1 can never expose the suicide -> joy failure this backoff
-fixes. This script reports, per row:
-
-  - model-only prediction (backoff bypassed)
-  - served prediction (backoff applied, exactly what Django returns)
-  - the expected label
-
-It checks that every crisis row triggers its phrase and is served
-with the expected label, that no contrast row triggers, and that
-contrast predictions are unchanged. Exits non-zero if a check fails.
-
-Usage: python ml/eval_crisis.py
-"""
 import pickle
 import sys
 from pathlib import Path

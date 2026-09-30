@@ -1,9 +1,3 @@
-"""
-Evaluation of the trained emotion model on the dev set.
-
-Loads model.pkl and vectorizer.pkl, reports the dev classification metrics and
-confusion matrix, and lists the most-confused emotion pairs.
-"""
 import sys
 from pathlib import Path
 

@@ -1,15 +1,3 @@
-"""
-Exploratory data analysis for the GoEmotions dataset.
-
-Loads the TSV files in ml/data/ (text, label, id), inspects their structure,
-collapses the 27 GoEmotions emotion ids into 7 core emotions, and reports
-class imbalance, text-length distribution, nulls, duplicates and multi-label
-rows. Figures are saved to ml/eda_artifacts/.
-
-Run from the project root:
-    python ml/eda.py
-"""
-
 import sys
 from pathlib import Path
 

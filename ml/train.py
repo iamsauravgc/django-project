@@ -1,14 +1,3 @@
-"""
-Training, variant comparison and evaluation for the emotion detector.
-
-All model choices (features, C, weights, calibration, decision boosts) are
-made on the dev set. The test set is scored only when the final block runs,
-i.e. without the --dev-only flag, exactly once at the end of a campaign.
-
-Run:
-  python ml/train.py --dev-only     # compare variants, no test evaluation
-  python ml/train.py                # compare, save artifacts, final test eval
-"""
 import argparse
 import sys
 from pathlib import Path
@@ -191,7 +180,7 @@ def main():
     sgd.fit(X_train, y_train)
     print(f"SGDClassifier (reference)  dev macro-F1: {macro_f1(sgd, X_dev, y_dev):.4f}")
 
-    # C selected by dev score (CLAUDE.md step 10)
+    # C selected by dev score (planning brief step 10)
     best_c, c_model, c_dev = None, None, -1.0
     for c in C_GRID:
         model = LinearSVC(C=c, **SVC_PARAMS)
